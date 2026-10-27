@@ -1,0 +1,6 @@
+import {pipeline,env} from '@huggingface/transformers';
+import {chunk,rank,locations} from './search.js';
+env.allowLocalModels=false;
+let encoder,passages=[],vectors=[],sourceLocations=[];
+async function embed(text){const result=await encoder(text,{pooling:'mean',normalize:true});return Array.from(result.data)}
+self.onmessage=async ({data})=>{try{if(!encoder){self.postMessage({type:'status',message:'Downloading the open model. First use needs internet; your stories are not sent.'});encoder=await pipeline('feature-extraction','Xenova/all-MiniLM-L6-v2',{dtype:'q8'});}if(data.type==='index'){passages=chunk(data.text);sourceLocations=locations(data.text);vectors=[];for(let i=0;i<passages.length;i++){vectors.push(await embed(passages[i]));self.postMessage({type:'status',message:`Reading passage ${i+1} of ${passages.length} on this device…`});}self.postMessage({type:'ready',count:passages.length});}else if(data.type==='search'){if(!vectors.length)throw new Error('Read an archive first.');self.postMessage({type:'results',items:rank(await embed(data.query),vectors,passages).map(item=>({...item,...sourceLocations[item.index]}))});}}catch(error){self.postMessage({type:'error',message:error.message});}};
